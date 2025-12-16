@@ -1,13 +1,171 @@
 "use client"
 
+import { useState } from "react"
 import { useGame } from "@/lib/game-context"
-import { TournamentSummary } from "./tournament-summary"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Trophy, Medal, Award, ArrowLeft, Calendar } from "lucide-react"
-import type { ModelStats } from "@/lib/types"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { RoundDetailViewer } from "./round-detail-viewer"
+import { Trophy, Medal, Award, ArrowLeft, Calendar, ChevronDown, ChevronUp, Swords, Eye } from "lucide-react"
+import type { ModelStats, MatchState } from "@/lib/types"
+
+function MatchDetailCard({ match, matchIndex }: { match: MatchState; matchIndex: number }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<"table" | "detail">("table")
+  const [selectedRound, setSelectedRound] = useState(1)
+
+  const totalA = match.rounds.reduce((sum, r) => sum + r.modelAPayoff, 0)
+  const totalB = match.rounds.reduce((sum, r) => sum + r.modelBPayoff, 0)
+  const winner = totalA > totalB ? match.modelA : totalB > totalA ? match.modelB : null
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-muted-foreground">Match {matchIndex + 1}</span>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <span className={winner?.id === match.modelA.id ? "text-emerald-600" : ""}>
+                    {match.modelA.displayName}
+                  </span>
+                  <Swords className="h-4 w-4 text-muted-foreground" />
+                  <span className={winner?.id === match.modelB.id ? "text-emerald-600" : ""}>
+                    {match.modelB.displayName}
+                  </span>
+                </CardTitle>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-sm font-mono">
+                  <span className={totalA > totalB ? "text-emerald-600 font-bold" : "text-muted-foreground"}>
+                    {totalA}
+                  </span>
+                  <span className="text-muted-foreground mx-1">-</span>
+                  <span className={totalB > totalA ? "text-emerald-600 font-bold" : "text-muted-foreground"}>
+                    {totalB}
+                  </span>
+                </div>
+                {winner && (
+                  <Badge variant="secondary" className="text-xs">
+                    <Trophy className="h-3 w-3 mr-1" />
+                    {winner.displayName}
+                  </Badge>
+                )}
+                {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </div>
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0 space-y-4">
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "table" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("table")}
+                >
+                  Quick View
+                </Button>
+                <Button
+                  variant={viewMode === "detail" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("detail")}
+                >
+                  <Eye className="h-4 w-4 mr-1" />
+                  Detailed View
+                </Button>
+              </div>
+              {viewMode === "detail" && (
+                <div className="flex items-center gap-2">
+                  {match.rounds.map((_, idx) => (
+                    <Button
+                      key={idx}
+                      variant={selectedRound === idx + 1 ? "default" : "outline"}
+                      size="sm"
+                      className="w-8 h-8 p-0"
+                      onClick={() => setSelectedRound(idx + 1)}
+                    >
+                      {idx + 1}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {viewMode === "table" ? (
+              /* Quick Table View */
+              <div>
+                <div className="grid grid-cols-[auto_1fr_auto_auto_1fr_auto] gap-2 text-xs font-medium text-muted-foreground pb-2 border-b mb-2">
+                  <span className="w-8"></span>
+                  <span>{match.modelA.displayName} Pledge</span>
+                  <span className="w-8 text-center">A</span>
+                  <span className="w-8 text-center">B</span>
+                  <span>{match.modelB.displayName} Pledge</span>
+                  <span className="w-16 text-right">Payoff</span>
+                </div>
+                {match.rounds.map((round) => (
+                  <div
+                    key={round.round}
+                    className="grid grid-cols-[auto_1fr_auto_auto_1fr_auto] gap-2 items-center text-sm py-2 border-b last:border-b-0 cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setSelectedRound(round.round)
+                      setViewMode("detail")
+                    }}
+                  >
+                    <span className="text-muted-foreground w-8">R{round.round}</span>
+                    <span className="text-xs text-muted-foreground truncate" title={round.modelAPledge}>
+                      "{round.modelAPledge.length > 30 ? round.modelAPledge.substring(0, 30) + "..." : round.modelAPledge}"
+                    </span>
+                    <Badge
+                      variant={round.modelADecision === "C" ? "default" : "destructive"}
+                      className={`w-8 justify-center ${round.modelADecision === "C" ? "bg-emerald-500 hover:bg-emerald-600" : ""}`}
+                    >
+                      {round.modelADecision}
+                    </Badge>
+                    <Badge
+                      variant={round.modelBDecision === "C" ? "default" : "destructive"}
+                      className={`w-8 justify-center ${round.modelBDecision === "C" ? "bg-emerald-500 hover:bg-emerald-600" : ""}`}
+                    >
+                      {round.modelBDecision}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground truncate" title={round.modelBPledge}>
+                      "{round.modelBPledge.length > 30 ? round.modelBPledge.substring(0, 30) + "..." : round.modelBPledge}"
+                    </span>
+                    <span className="text-xs font-mono w-16 text-right">
+                      <span className={round.modelAPayoff >= round.modelBPayoff ? "text-emerald-600 font-medium" : ""}>
+                        +{round.modelAPayoff}
+                      </span>
+                      {" / "}
+                      <span className={round.modelBPayoff >= round.modelAPayoff ? "text-emerald-600 font-medium" : ""}>
+                        +{round.modelBPayoff}
+                      </span>
+                    </span>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground text-center mt-3">
+                  Click on any round to see full details
+                </p>
+              </div>
+            ) : (
+              /* Detailed Round View */
+              <RoundDetailViewer
+                match={match}
+                mode="review"
+                selectedRound={selectedRound}
+                onRoundChange={setSelectedRound}
+              />
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  )
+}
 
 export function HistoryDetail() {
   const { viewingTournament, setCurrentView } = useGame()
@@ -22,6 +180,7 @@ export function HistoryDetail() {
 
   const rankings = viewingTournament.final_rankings as ModelStats[]
   const sortedRankings = [...rankings].sort((a, b) => b.totalPoints - a.totalPoints)
+  const matches = viewingTournament.matches || []
 
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Trophy className="h-5 w-5 text-yellow-500" />
@@ -134,14 +293,16 @@ export function HistoryDetail() {
           </CardContent>
         </Card>
 
-        {/* Match Details (using TournamentSummary in read-only mode) */}
+        {/* Match Details */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Match Details</CardTitle>
-            <CardDescription>Expand each match to see round-by-round results</CardDescription>
+            <CardDescription>Expand each match to see round-by-round results with full details</CardDescription>
           </CardHeader>
-          <CardContent>
-            <TournamentSummary isReadOnly pastTournament={viewingTournament} />
+          <CardContent className="space-y-4">
+            {matches.map((match, index) => (
+              <MatchDetailCard key={index} match={match} matchIndex={index} />
+            ))}
           </CardContent>
         </Card>
 

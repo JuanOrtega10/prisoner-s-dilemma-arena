@@ -85,13 +85,17 @@ export function AutoMatchPanel({ match, isPaused }: AutoMatchPanelProps) {
 
             {/* Pledges */}
             <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="p-2 rounded bg-background">
-                <p className="text-xs font-medium text-muted-foreground mb-1">{match.modelA.displayName}'s pledge</p>
-                <p className="text-xs italic">"{lastRound.modelAPledge}"</p>
+              <div className="p-3 rounded-lg bg-background border min-h-[80px]">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">{match.modelA.displayName}'s pledge</p>
+                <p className="text-sm italic leading-relaxed line-clamp-4" title={lastRound.modelAPledge}>
+                  "{lastRound.modelAPledge}"
+                </p>
               </div>
-              <div className="p-2 rounded bg-background">
-                <p className="text-xs font-medium text-muted-foreground mb-1">{match.modelB.displayName}'s pledge</p>
-                <p className="text-xs italic">"{lastRound.modelBPledge}"</p>
+              <div className="p-3 rounded-lg bg-background border min-h-[80px]">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">{match.modelB.displayName}'s pledge</p>
+                <p className="text-sm italic leading-relaxed line-clamp-4" title={lastRound.modelBPledge}>
+                  "{lastRound.modelBPledge}"
+                </p>
               </div>
             </div>
 

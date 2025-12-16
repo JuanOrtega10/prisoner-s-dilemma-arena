@@ -19,6 +19,8 @@ function GameContent() {
       return <MatchViewer />
     case "summary":
       return <TournamentSummary />
+    case "matchReview":
+      return <TournamentSummary />
     case "results":
       return <FinalRanking />
     case "learn":

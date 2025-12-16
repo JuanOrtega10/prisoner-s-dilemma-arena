@@ -4,6 +4,8 @@ import { createContext, useContext, useState, type ReactNode } from "react"
 import type { TournamentState, Model, RoundResult, RecentTournament } from "./types"
 import { initializeTournament, calculatePayoffs, didBreakPledge, updateStats } from "./tournament"
 
+type ViewType = "home" | "match" | "summary" | "results" | "learn" | "history" | "historyDetail" | "matchReview"
+
 interface GameContextType {
   tournament: TournamentState | null
   startTournament: (models: Model[]) => void
@@ -17,8 +19,8 @@ interface GameContextType {
   ) => void
   nextMatch: () => void
   resetTournament: () => void
-  currentView: "home" | "match" | "summary" | "results" | "learn" | "history" | "historyDetail"
-  setCurrentView: (view: "home" | "match" | "summary" | "results" | "learn" | "history" | "historyDetail") => void
+  currentView: ViewType
+  setCurrentView: (view: ViewType) => void
   viewingTournament: RecentTournament | null
   setViewingTournament: (tournament: RecentTournament | null) => void
 }
@@ -27,9 +29,7 @@ const GameContext = createContext<GameContextType | null>(null)
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [tournament, setTournament] = useState<TournamentState | null>(null)
-  const [currentView, setCurrentView] = useState<
-    "home" | "match" | "summary" | "results" | "learn" | "history" | "historyDetail"
-  >("home")
+  const [currentView, setCurrentView] = useState<ViewType>("home")
   const [viewingTournament, setViewingTournament] = useState<RecentTournament | null>(null)
 
   const startTournament = (models: Model[]) => {

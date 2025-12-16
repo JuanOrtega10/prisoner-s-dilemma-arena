@@ -3,21 +3,29 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useGame } from "@/lib/game-context"
 import { TournamentStandings } from "./tournament-standings"
-import { AutoMatchPanel } from "./auto-match-panel"
+import { RoundDetailViewer } from "./round-detail-viewer"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { SystemPromptModal } from "./system-prompt-modal"
 import { AboutDilemmaModal } from "./about-dilemma-modal"
 import { FIXED_TEMPERATURE } from "@/lib/constants"
-import { ArrowLeft, Pause, Play, FastForward, Thermometer } from "lucide-react"
+import { ArrowLeft, Pause, Play, FastForward, Thermometer, Loader2 } from "lucide-react"
+
+const ROUND_COUNTDOWN = 2 // seconds between rounds
+const MATCH_COUNTDOWN = 5 // seconds between matches
 
 export function MatchViewer() {
   const { tournament, nextMatch, setCurrentView, playRound } = useGame()
   const [isPaused, setIsPaused] = useState(false)
   const [isSimulating, setIsSimulating] = useState(true)
   const [currentStatus, setCurrentStatus] = useState("Starting tournament...")
+  const [countdownSeconds, setCountdownSeconds] = useState(ROUND_COUNTDOWN)
+  const [countdownMax, setCountdownMax] = useState(ROUND_COUNTDOWN)
+  const [isWaitingForNextRound, setIsWaitingForNextRound] = useState(false)
+  const [isProcessingRound, setIsProcessingRound] = useState(false)
   const abortRef = useRef(false)
+  const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
   const totalMatches = tournament?.matches.length ?? 0
   const completedMatches = tournament?.matches.filter((m) => m.isComplete).length ?? 0
@@ -29,12 +37,42 @@ export function MatchViewer() {
   const completedRounds = completedMatches * roundsPerMatch + (currentMatch ? currentMatch.rounds.length : 0)
   const overallProgress = totalRounds > 0 ? (completedRounds / totalRounds) * 100 : 0
 
+  // Clear countdown timer on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+      }
+    }
+  }, [])
+
+  // Handle countdown timer
+  useEffect(() => {
+    if (isWaitingForNextRound && !isPaused && countdownSeconds > 0) {
+      countdownRef.current = setInterval(() => {
+        setCountdownSeconds((prev) => {
+          if (prev <= 1) {
+            setIsWaitingForNextRound(false)
+            return countdownMax
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => {
+        if (countdownRef.current) {
+          clearInterval(countdownRef.current)
+        }
+      }
+    }
+  }, [isWaitingForNextRound, isPaused, countdownSeconds, countdownMax])
+
   const runSimulation = useCallback(async () => {
-    if (!tournament || !currentMatch || abortRef.current) return
+    if (!tournament || !currentMatch || abortRef.current || isProcessingRound) return
 
     // Check if tournament is complete
     if (tournament.isComplete) {
-      setCurrentView("summary")
+      setCurrentView("matchReview")
       return
     }
 
@@ -42,13 +80,14 @@ export function MatchViewer() {
     if (currentMatch.currentRound > currentMatch.maxRounds) {
       // Move to next match or finish
       if (currentMatchIndex >= totalMatches - 1) {
-        setCurrentView("summary")
+        setCurrentView("matchReview")
         return
       }
       nextMatch()
       return
     }
 
+    setIsProcessingRound(true)
     setCurrentStatus(
       `Simulating match ${currentMatchIndex + 1} of ${totalMatches} · round ${currentRound} of ${roundsPerMatch}`,
     )
@@ -108,11 +147,32 @@ export function MatchViewer() {
         responseB.reason,
       )
 
-      // Pause for animation (show results briefly)
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      setIsProcessingRound(false)
+      
+      // Start countdown for next round (unless match is complete)
+      const nextRoundNumber = currentMatch.currentRound + 1
+      if (nextRoundNumber <= currentMatch.maxRounds) {
+        setCountdownMax(ROUND_COUNTDOWN)
+        setCountdownSeconds(ROUND_COUNTDOWN)
+        setIsWaitingForNextRound(true)
+      } else {
+        // Match is complete, wait with longer countdown before next match
+        setCurrentStatus("Match complete!")
+        setCountdownMax(MATCH_COUNTDOWN)
+        setCountdownSeconds(MATCH_COUNTDOWN)
+        setIsWaitingForNextRound(true)
+        await new Promise((resolve) => setTimeout(resolve, MATCH_COUNTDOWN * 1000))
+        
+        if (currentMatchIndex >= totalMatches - 1) {
+          setCurrentView("matchReview")
+        } else {
+          nextMatch()
+        }
+      }
     } catch (error) {
       console.error("Simulation error:", error)
       setCurrentStatus("Error occurred, retrying...")
+      setIsProcessingRound(false)
       await new Promise((resolve) => setTimeout(resolve, 2000))
     }
   }, [
@@ -125,26 +185,36 @@ export function MatchViewer() {
     nextMatch,
     playRound,
     setCurrentView,
+    isProcessingRound,
   ])
 
+  // Trigger simulation when ready
   useEffect(() => {
-    if (!isSimulating || isPaused || !tournament) return
+    if (!isSimulating || isPaused || !tournament || isWaitingForNextRound || isProcessingRound) return
 
     const timer = setTimeout(() => {
       runSimulation()
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [isSimulating, isPaused, tournament, currentMatchIndex, currentRound, runSimulation])
+  }, [isSimulating, isPaused, tournament, currentMatchIndex, currentRound, runSimulation, isWaitingForNextRound, isProcessingRound])
 
   const handleSkipToResults = () => {
     abortRef.current = true
     setIsSimulating(false)
-    setCurrentView("summary")
+    setCurrentView("matchReview")
   }
 
   const handleTogglePause = () => {
     setIsPaused((prev) => !prev)
+  }
+
+  const handleContinueFromMatch = () => {
+    if (currentMatchIndex >= totalMatches - 1) {
+      setCurrentView("matchReview")
+    } else {
+      nextMatch()
+    }
   }
 
   if (!tournament) {
@@ -217,7 +287,10 @@ export function MatchViewer() {
               </Button>
             </div>
             <div className="flex-1 max-w-md">
-              <p className="text-xs text-muted-foreground text-center mb-1">{currentStatus}</p>
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-1">
+                {isProcessingRound && <Loader2 className="h-3 w-3 animate-spin" />}
+                <span>{currentStatus}</span>
+              </div>
               <Progress value={overallProgress} className="h-2" />
             </div>
             <div className="text-xs text-muted-foreground w-24 text-right">
@@ -235,9 +308,20 @@ export function MatchViewer() {
             <TournamentStandings modelStats={tournament.modelStats} />
           </div>
 
-          {/* Right: Current Match */}
+          {/* Right: Current Match with RoundDetailViewer */}
           <div className="lg:col-span-2">
-            {currentMatch && <AutoMatchPanel match={currentMatch} isPaused={isPaused} />}
+            {currentMatch && (
+              <RoundDetailViewer
+                match={currentMatch}
+                mode="live"
+                isPaused={isPaused}
+                onPauseToggle={handleTogglePause}
+                countdownSeconds={countdownSeconds}
+                countdownMax={countdownMax}
+                isWaitingForNextRound={isWaitingForNextRound}
+                onContinue={handleContinueFromMatch}
+              />
+            )}
           </div>
         </div>
       </div>
