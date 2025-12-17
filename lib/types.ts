@@ -4,6 +4,7 @@ export interface ModelResponse {
   pledge: string
   decision: Decision
   reason: string
+  brokePledge: boolean
 }
 
 export interface Model {
@@ -65,6 +66,11 @@ export interface GlobalLeaderboardEntry {
   average_honesty_percent: number
   average_cooperation_percent: number
   last_played_at: string
+  // New metrics for normalized comparisons
+  total_matches_played: number
+  total_matches_won: number
+  win_rate: number
+  average_points_per_match: number
 }
 
 export interface RecentTournament {

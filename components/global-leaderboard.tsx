@@ -18,7 +18,7 @@ export function GlobalLeaderboard() {
       const { data, error } = await supabase
         .from("global_leaderboard")
         .select("*")
-        .order("average_total_points", { ascending: false })
+        .order("win_rate", { ascending: false })
 
       if (!error && data) {
         setEntries(data)
@@ -57,10 +57,21 @@ export function GlobalLeaderboard() {
               <TableRow>
                 <TableHead className="w-16">Rank</TableHead>
                 <TableHead>Model</TableHead>
-                <TableHead className="text-right">Avg Points</TableHead>
-                <TableHead className="text-right">Avg Honesty</TableHead>
-                <TableHead className="text-right">Avg Cooperation</TableHead>
-                <TableHead className="text-right">Tournaments</TableHead>
+                <TableHead className="text-right" title="Percentage of matches won against opponents">
+                  Win Rate
+                </TableHead>
+                <TableHead className="text-right" title="Average points earned per match (max 25 pts)">
+                  Pts/Match
+                </TableHead>
+                <TableHead className="text-right" title="How often the model kept its promises - said it would cooperate and actually did">
+                  Honesty
+                </TableHead>
+                <TableHead className="text-right" title="How often the model chose to cooperate instead of defect">
+                  Cooperation
+                </TableHead>
+                <TableHead className="text-right" title="Total number of tournaments played">
+                  Tournaments
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -74,7 +85,14 @@ export function GlobalLeaderboard() {
                   </TableCell>
                   <TableCell className="font-medium">{entry.model_display_name}</TableCell>
                   <TableCell className="text-right">
-                    <Badge variant="secondary">{Number(entry.average_total_points).toFixed(1)}</Badge>
+                    <Badge variant="secondary" className="font-mono">
+                      {Number(entry.win_rate || 0).toFixed(0)}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-mono text-muted-foreground">
+                      {Number(entry.average_points_per_match || 0).toFixed(1)}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right">
                     <span

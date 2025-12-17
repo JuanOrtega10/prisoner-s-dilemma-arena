@@ -14,6 +14,8 @@ import { ArrowLeft, Pause, Play, FastForward, Thermometer, Loader2 } from "lucid
 
 const ROUND_COUNTDOWN = 2 // seconds between rounds
 const MATCH_COUNTDOWN = 5 // seconds between matches
+const MAX_RETRIES = 3 // maximum retries for failed rounds
+const RETRY_DELAY = 2000 // delay between retries in ms
 
 export function MatchViewer() {
   const { tournament, nextMatch, setCurrentView, playRound } = useGame()
@@ -24,6 +26,7 @@ export function MatchViewer() {
   const [countdownMax, setCountdownMax] = useState(ROUND_COUNTDOWN)
   const [isWaitingForNextRound, setIsWaitingForNextRound] = useState(false)
   const [isProcessingRound, setIsProcessingRound] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
   const abortRef = useRef(false)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -83,104 +86,170 @@ export function MatchViewer() {
         setCurrentView("matchReview")
         return
       }
-      nextMatch()
+      const tournamentComplete = nextMatch()
+      if (tournamentComplete) {
+        setCurrentView("matchReview")
+      }
       return
     }
 
     setIsProcessingRound(true)
+    const currentRoundNum = currentMatch.currentRound
     setCurrentStatus(
-      `Simulating match ${currentMatchIndex + 1} of ${totalMatches} · round ${currentRound} of ${roundsPerMatch}`,
+      `Simulating match ${currentMatchIndex + 1} of ${totalMatches} · round ${currentRoundNum} of ${roundsPerMatch}`,
     )
 
-    try {
-      const historyForA = currentMatch.rounds.map((r) => ({
-        round: r.round,
-        yourPledge: r.modelAPledge,
-        opponentPledge: r.modelBPledge,
-        yourMove: r.modelADecision,
-        opponentMove: r.modelBDecision,
-      }))
+    const attemptRound = async (attempt: number): Promise<boolean> => {
+      try {
+        const historyForA = currentMatch.rounds.map((r) => ({
+          round: r.round,
+          yourPledge: r.modelAPledge,
+          opponentPledge: r.modelBPledge,
+          yourMove: r.modelADecision,
+          opponentMove: r.modelBDecision,
+        }))
 
-      const historyForB = currentMatch.rounds.map((r) => ({
-        round: r.round,
-        yourPledge: r.modelBPledge,
-        opponentPledge: r.modelAPledge,
-        yourMove: r.modelBDecision,
-        opponentMove: r.modelADecision,
-      }))
+        const historyForB = currentMatch.rounds.map((r) => ({
+          round: r.round,
+          yourPledge: r.modelBPledge,
+          opponentPledge: r.modelAPledge,
+          yourMove: r.modelBDecision,
+          opponentMove: r.modelADecision,
+        }))
 
-      // Call both models in parallel
-      const [responseA, responseB] = await Promise.all([
-        fetch("/api/play-round", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            modelId: currentMatch.modelA.id,
-            opponentId: currentMatch.modelB.displayName,
-            roundNumber: currentMatch.currentRound,
-            maxRounds: currentMatch.maxRounds,
-            history: historyForA,
+        // Call both models in parallel
+        const [resA, resB] = await Promise.all([
+          fetch("/api/play-round", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              modelId: currentMatch.modelA.id,
+              opponentId: currentMatch.modelB.displayName,
+              roundNumber: currentRoundNum,
+              maxRounds: currentMatch.maxRounds,
+              history: historyForA,
+            }),
           }),
-        }).then((r) => r.json()),
-        fetch("/api/play-round", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            modelId: currentMatch.modelB.id,
-            opponentId: currentMatch.modelA.displayName,
-            roundNumber: currentMatch.currentRound,
-            maxRounds: currentMatch.maxRounds,
-            history: historyForB,
+          fetch("/api/play-round", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              modelId: currentMatch.modelB.id,
+              opponentId: currentMatch.modelA.displayName,
+              roundNumber: currentRoundNum,
+              maxRounds: currentMatch.maxRounds,
+              history: historyForB,
+            }),
           }),
-        }).then((r) => r.json()),
-      ])
+        ])
 
-      if (abortRef.current) return
+        if (abortRef.current) return false
 
-      // Record the round
-      playRound(
-        responseA.pledge,
-        responseA.decision,
-        responseA.reason,
-        responseB.pledge,
-        responseB.decision,
-        responseB.reason,
-      )
+        // Check HTTP status
+        if (!resA.ok || !resB.ok) {
+          throw new Error(`API error: ${resA.status} / ${resB.status}`)
+        }
 
-      setIsProcessingRound(false)
-      
-      // Start countdown for next round (unless match is complete)
-      const nextRoundNumber = currentMatch.currentRound + 1
-      if (nextRoundNumber <= currentMatch.maxRounds) {
-        setCountdownMax(ROUND_COUNTDOWN)
-        setCountdownSeconds(ROUND_COUNTDOWN)
-        setIsWaitingForNextRound(true)
-      } else {
-        // Match is complete, wait with longer countdown before next match
-        setCurrentStatus("Match complete!")
-        setCountdownMax(MATCH_COUNTDOWN)
-        setCountdownSeconds(MATCH_COUNTDOWN)
-        setIsWaitingForNextRound(true)
-        await new Promise((resolve) => setTimeout(resolve, MATCH_COUNTDOWN * 1000))
+        const [responseA, responseB] = await Promise.all([resA.json(), resB.json()])
+
+        // Validate responses have required fields
+        if (!responseA.decision || !responseB.decision) {
+          throw new Error("Invalid response: missing decision field")
+        }
+
+        // Normalize decisions to ensure they're valid
+        const decisionA = responseA.decision === "C" || responseA.decision === "D" 
+          ? responseA.decision 
+          : "C" // Default to cooperate if invalid
+        const decisionB = responseB.decision === "C" || responseB.decision === "D" 
+          ? responseB.decision 
+          : "C"
+
+        // Record the round
+        playRound(
+          responseA.pledge || "No pledge provided",
+          decisionA,
+          responseA.reason || "No reasoning provided",
+          responseA.brokePledge ?? false,
+          responseB.pledge || "No pledge provided",
+          decisionB,
+          responseB.reason || "No reasoning provided",
+          responseB.brokePledge ?? false,
+        )
+
+        setRetryCount(0) // Reset retry count on success
+        return true
+      } catch (error) {
+        console.error(`Round attempt ${attempt} failed:`, error)
         
-        if (currentMatchIndex >= totalMatches - 1) {
+        if (attempt < MAX_RETRIES) {
+          setCurrentStatus(`Error in round ${currentRoundNum}, retrying (${attempt}/${MAX_RETRIES})...`)
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY))
+          return attemptRound(attempt + 1)
+        }
+        
+        // Max retries reached, use default values to continue
+        console.error(`Max retries reached for round ${currentRoundNum}, using defaults`)
+        setCurrentStatus(`Round ${currentRoundNum} failed, using default values...`)
+        
+        // Record round with default cooperate values to keep tournament moving
+        playRound(
+          "Technical error occurred",
+          "C",
+          "Default decision due to error",
+          false,
+          "Technical error occurred", 
+          "C",
+          "Default decision due to error",
+          false,
+        )
+        
+        setRetryCount(0)
+        return true
+      }
+    }
+
+    const success = await attemptRound(1)
+    
+    if (!success || abortRef.current) {
+      setIsProcessingRound(false)
+      return
+    }
+
+    setIsProcessingRound(false)
+    
+    // Start countdown for next round (unless match is complete)
+    // Note: currentRoundNum is the round we just completed
+    // So we need to check if the NEXT round number would exceed maxRounds
+    const nextRoundNumber = currentRoundNum + 1
+    if (nextRoundNumber <= currentMatch.maxRounds) {
+      setCountdownMax(ROUND_COUNTDOWN)
+      setCountdownSeconds(ROUND_COUNTDOWN)
+      setIsWaitingForNextRound(true)
+    } else {
+      // Match is complete, wait with longer countdown before next match
+      setCurrentStatus("Match complete!")
+      setCountdownMax(MATCH_COUNTDOWN)
+      setCountdownSeconds(MATCH_COUNTDOWN)
+      setIsWaitingForNextRound(true)
+      await new Promise((resolve) => setTimeout(resolve, MATCH_COUNTDOWN * 1000))
+      
+      if (abortRef.current) return
+      
+      if (currentMatchIndex >= totalMatches - 1) {
+        setCurrentView("matchReview")
+      } else {
+        const tournamentComplete = nextMatch()
+        if (tournamentComplete) {
           setCurrentView("matchReview")
-        } else {
-          nextMatch()
         }
       }
-    } catch (error) {
-      console.error("Simulation error:", error)
-      setCurrentStatus("Error occurred, retrying...")
-      setIsProcessingRound(false)
-      await new Promise((resolve) => setTimeout(resolve, 2000))
     }
   }, [
     tournament,
     currentMatch,
     currentMatchIndex,
     totalMatches,
-    currentRound,
     roundsPerMatch,
     nextMatch,
     playRound,
@@ -213,7 +282,10 @@ export function MatchViewer() {
     if (currentMatchIndex >= totalMatches - 1) {
       setCurrentView("matchReview")
     } else {
-      nextMatch()
+      const tournamentComplete = nextMatch()
+      if (tournamentComplete) {
+        setCurrentView("matchReview")
+      }
     }
   }
 

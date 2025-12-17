@@ -51,17 +51,6 @@ export function calculatePayoffs(decisionA: Decision, decisionB: Decision): [num
   return matrix[decisionA][decisionB]
 }
 
-export function didBreakPledge(pledge: string, decision: Decision): boolean {
-  const pledgeLower = pledge.toLowerCase()
-  const promisedCooperation =
-    pledgeLower.includes("cooperate") ||
-    pledgeLower.includes("work together") ||
-    pledgeLower.includes("collaborate") ||
-    pledgeLower.includes("mutual benefit")
-
-  return promisedCooperation && decision === "D"
-}
-
 export function updateStats(
   stats: Record<string, ModelStats>,
   result: RoundResult,

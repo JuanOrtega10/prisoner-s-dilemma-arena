@@ -5,6 +5,7 @@ const ResponseSchema = z.object({
   pledge: z.string().describe("A short public statement about your intentions (1-2 sentences)"),
   decision: z.enum(["C", "D"]).describe("Your actual decision: C for Cooperate, D for Defect"),
   reason: z.string().describe("A brief explanation of why you made this choice (1-2 sentences)"),
+  brokePledge: z.boolean().describe("Did your actual decision contradict your pledge? True if you pledged cooperation but chose D, or pledged defection but chose C. False if your decision matches your pledge or your pledge was neutral/ambiguous."),
 })
 
 export const SYSTEM_PROMPT = `You are playing an iterated Prisoner's Dilemma game against another AI-controlled player.

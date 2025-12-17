@@ -32,8 +32,38 @@ export function FinalRanking() {
 
       const supabase = getSupabaseBrowserClient()
 
+      // Calculate matches played and won for each model
+      const matchStats: Record<string, { played: number; won: number }> = {}
+      
+      // Initialize match stats for all models
+      for (const model of tournament.models) {
+        matchStats[model.id] = { played: 0, won: 0 }
+      }
+      
+      // Count matches played and won from completed matches
+      for (const match of tournament.matches) {
+        if (!match.isComplete) continue
+        
+        // Calculate total points for each model in this match
+        const pointsA = match.rounds.reduce((sum, r) => sum + r.modelAPayoff, 0)
+        const pointsB = match.rounds.reduce((sum, r) => sum + r.modelBPayoff, 0)
+        
+        // Both models played this match
+        matchStats[match.modelA.id].played += 1
+        matchStats[match.modelB.id].played += 1
+        
+        // Determine winner (ties don't count as wins for either)
+        if (pointsA > pointsB) {
+          matchStats[match.modelA.id].won += 1
+        } else if (pointsB > pointsA) {
+          matchStats[match.modelB.id].won += 1
+        }
+      }
+
       // Save each model's stats to the global leaderboard
       for (const stats of Object.values(tournament.modelStats)) {
+        const modelMatchStats = matchStats[stats.model.id]
+        
         const { data: existing } = await supabase
           .from("global_leaderboard")
           .select("*")
@@ -49,6 +79,8 @@ export function FinalRanking() {
               total_points_sum: existing.total_points_sum + stats.totalPoints,
               total_honesty_sum: Number(existing.total_honesty_sum) + stats.honestyPercent,
               total_cooperation_sum: Number(existing.total_cooperation_sum) + stats.cooperationPercent,
+              total_matches_played: (existing.total_matches_played || 0) + modelMatchStats.played,
+              total_matches_won: (existing.total_matches_won || 0) + modelMatchStats.won,
               last_played_at: new Date().toISOString(),
             })
             .eq("model_id", stats.model.id)
@@ -61,6 +93,8 @@ export function FinalRanking() {
             total_points_sum: stats.totalPoints,
             total_honesty_sum: stats.honestyPercent,
             total_cooperation_sum: stats.cooperationPercent,
+            total_matches_played: modelMatchStats.played,
+            total_matches_won: modelMatchStats.won,
           })
         }
       }

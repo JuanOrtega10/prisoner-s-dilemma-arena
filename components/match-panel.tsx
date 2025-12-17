@@ -98,9 +98,11 @@ export function MatchPanel({ match, onMatchComplete }: MatchPanelProps) {
         responseA.pledge,
         responseA.decision,
         responseA.reason,
+        responseA.brokePledge ?? false,
         responseB.pledge,
         responseB.decision,
         responseB.reason,
+        responseB.brokePledge ?? false,
       )
     } catch (err) {
       setError("Failed to get responses from models. Please try again.")

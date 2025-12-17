@@ -1,8 +1,8 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react"
 import type { TournamentState, Model, RoundResult, RecentTournament } from "./types"
-import { initializeTournament, calculatePayoffs, didBreakPledge, updateStats } from "./tournament"
+import { initializeTournament, calculatePayoffs, updateStats } from "./tournament"
 
 type ViewType = "home" | "match" | "summary" | "results" | "learn" | "history" | "historyDetail" | "matchReview"
 
@@ -13,11 +13,13 @@ interface GameContextType {
     modelAPledge: string,
     modelADecision: "C" | "D",
     modelAReason: string,
+    modelABrokePledge: boolean,
     modelBPledge: string,
     modelBDecision: "C" | "D",
     modelBReason: string,
+    modelBBrokePledge: boolean,
   ) => void
-  nextMatch: () => void
+  nextMatch: () => boolean // Returns true if tournament is complete
   resetTournament: () => void
   currentView: ViewType
   setCurrentView: (view: ViewType) => void
@@ -31,6 +33,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [tournament, setTournament] = useState<TournamentState | null>(null)
   const [currentView, setCurrentView] = useState<ViewType>("home")
   const [viewingTournament, setViewingTournament] = useState<RecentTournament | null>(null)
+  
+  // Track if we need to navigate to summary after tournament completion
+  const pendingNavigationRef = useRef<ViewType | null>(null)
+
+  // Handle navigation after state updates
+  useEffect(() => {
+    if (pendingNavigationRef.current) {
+      setCurrentView(pendingNavigationRef.current)
+      pendingNavigationRef.current = null
+    }
+  }, [tournament?.isComplete])
 
   const startTournament = (models: Model[]) => {
     const newTournament = initializeTournament(models)
@@ -42,62 +55,72 @@ export function GameProvider({ children }: { children: ReactNode }) {
     modelAPledge: string,
     modelADecision: "C" | "D",
     modelAReason: string,
+    modelABrokePledge: boolean,
     modelBPledge: string,
     modelBDecision: "C" | "D",
     modelBReason: string,
+    modelBBrokePledge: boolean,
   ) => {
-    if (!tournament) return
+    setTournament((prev) => {
+      if (!prev) return null
 
-    const currentMatch = tournament.matches[tournament.currentMatchIndex]
-    const [payoffA, payoffB] = calculatePayoffs(modelADecision, modelBDecision)
+      const currentMatch = prev.matches[prev.currentMatchIndex]
+      const [payoffA, payoffB] = calculatePayoffs(modelADecision, modelBDecision)
 
-    const result: RoundResult = {
-      round: currentMatch.currentRound,
-      modelADecision,
-      modelBDecision,
-      modelAPledge,
-      modelBPledge,
-      modelAReason,
-      modelBReason,
-      modelAPayoff: payoffA,
-      modelBPayoff: payoffB,
-      modelABrokePledge: didBreakPledge(modelAPledge, modelADecision),
-      modelBBrokePledge: didBreakPledge(modelBPledge, modelBDecision),
-    }
+      const result: RoundResult = {
+        round: currentMatch.currentRound,
+        modelADecision,
+        modelBDecision,
+        modelAPledge,
+        modelBPledge,
+        modelAReason,
+        modelBReason,
+        modelAPayoff: payoffA,
+        modelBPayoff: payoffB,
+        modelABrokePledge,
+        modelBBrokePledge,
+      }
 
-    const updatedMatches = [...tournament.matches]
-    const updatedMatch = { ...currentMatch }
-    updatedMatch.rounds = [...updatedMatch.rounds, result]
-    updatedMatch.currentRound += 1
-    updatedMatch.isComplete = updatedMatch.currentRound > updatedMatch.maxRounds
-    updatedMatches[tournament.currentMatchIndex] = updatedMatch
+      const updatedMatches = [...prev.matches]
+      const updatedMatch = { ...currentMatch }
+      updatedMatch.rounds = [...updatedMatch.rounds, result]
+      updatedMatch.currentRound += 1
+      updatedMatch.isComplete = updatedMatch.currentRound > updatedMatch.maxRounds
+      updatedMatches[prev.currentMatchIndex] = updatedMatch
 
-    const updatedStats = updateStats(
-      tournament.modelStats,
-      result,
-      currentMatch.modelA,
-      currentMatch.modelB,
-      modelAPledge,
-      modelBPledge,
-    )
+      const updatedStats = updateStats(
+        prev.modelStats,
+        result,
+        currentMatch.modelA,
+        currentMatch.modelB,
+        modelAPledge,
+        modelBPledge,
+      )
 
-    setTournament({
-      ...tournament,
-      matches: updatedMatches,
-      modelStats: updatedStats,
+      return {
+        ...prev,
+        matches: updatedMatches,
+        modelStats: updatedStats,
+      }
     })
   }
 
-  const nextMatch = () => {
-    if (!tournament) return
+  const nextMatch = (): boolean => {
+    let isComplete = false
+    
+    setTournament((prev) => {
+      if (!prev) return null
 
-    const nextIndex = tournament.currentMatchIndex + 1
-    if (nextIndex >= tournament.matches.length) {
-      setTournament({ ...tournament, isComplete: true })
-      setCurrentView("summary")
-    } else {
-      setTournament({ ...tournament, currentMatchIndex: nextIndex })
-    }
+      const nextIndex = prev.currentMatchIndex + 1
+      if (nextIndex >= prev.matches.length) {
+        isComplete = true
+        pendingNavigationRef.current = "summary"
+        return { ...prev, isComplete: true }
+      }
+      return { ...prev, currentMatchIndex: nextIndex }
+    })
+    
+    return isComplete
   }
 
   const resetTournament = () => {
