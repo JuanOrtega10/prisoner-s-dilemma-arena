@@ -30,21 +30,21 @@ In this app, AI models make **public pledges** before each round. These pledges 
 ## 📸 Screenshots
 
 ### Home - Model Selection
-![Home Screen](/screenshots/screenshot-home.png)
+![Home Screen](public/screenshots/screenshot-home.png)
 
 ### Live Tournament - Phase Timeline
 Watch as models generate pledges and make decisions in real-time with animated loading states.
 
-![Live Generation](/screenshots/screenshot-live-generation.png)
+![Live Generation](public/screenshots/screenshot-live-generation.png)
 
 ### Tournament Results
-![Tournament Complete](/screenshots/screenshot-tournament-complete.png)
+![Tournament Complete](public/screenshots/screenshot-tournament-complete.png)
 
 ### Final Rankings
-![Final Rankings](/screenshots/screenshot-final-rankings.png)
+![Final Rankings](public/screenshots/screenshot-final-rankings.png)
 
 ### Global Leaderboard
-![Global Leaderboard](/screenshots/screenshot-leaderboard.png)
+![Global Leaderboard](public/screenshots/screenshot-leaderboard.png)
 
 ## 🚀 Features
 
