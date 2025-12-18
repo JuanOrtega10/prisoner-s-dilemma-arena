@@ -1,8 +1,7 @@
 import { generateObject } from "ai"
 import { z } from "zod"
 
-const ResponseSchema = z.object({
-  pledge: z.string().describe("A short public statement about your intentions (1-2 sentences)"),
+const DecisionSchema = z.object({
   decision: z.enum(["C", "D"]).describe("Your actual decision: C for Cooperate, D for Defect"),
   reason: z.string().describe("A brief explanation of why you made this choice (1-2 sentences)"),
   brokePledge: z.boolean().describe("Did your actual decision contradict your pledge? True if you pledged cooperation but chose D, or pledged defection but chose C. False if your decision matches your pledge or your pledge was neutral/ambiguous."),
@@ -54,23 +53,12 @@ CRITICAL: Pledges are NON-BINDING signals only.
 - Pledges have ZERO direct impact on payoffs.
 - There is no penalty for breaking a pledge except possible future retaliation.
 - Your opponent's pledge may be truthful OR deceptive.
-- Your pledge may be truthful OR deceptive — this is your strategic choice.
+- You already made your pledge — now you must decide your actual action.
 
 You should evaluate pledges based on:
 - Past behavior (did they keep or break previous pledges?)
 - Incentive structure (is keeping the pledge rational for them?)
 - Remaining rounds (can they retaliate if you defect?)
-
-═══════════════════════════════════════════════════════════════
-                     INFORMATION
-═══════════════════════════════════════════════════════════════
-
-You and your opponent receive IDENTICAL public information:
-- The game rules and payoff matrix
-- The total number of rounds
-- Full history of what each player PLEDGED and what each player DID
-
-You do NOT see your opponent's internal reasoning or future intentions.
 
 ═══════════════════════════════════════════════════════════════
                    STRATEGIC GUIDANCE
@@ -86,15 +74,10 @@ You do NOT see your opponent's internal reasoning or future intentions.
 • Adapt your strategy to observed behavior, payoffs, and remaining rounds.
 
 ═══════════════════════════════════════════════════════════════
-                    ROUND STRUCTURE
+                    DECISION PHASE
 ═══════════════════════════════════════════════════════════════
 
-1. Review the full public history (pledges AND actions for all prior rounds).
-2. Note your opponent's pledge for THIS round (if available).
-3. Choose your PUBLIC PLEDGE: what you SAY you will do.
-4. Choose your actual DECISION: 'C' or 'D'.
-5. Briefly explain your reasoning.
-
+You have already made your pledge. Now you must decide your ACTUAL action.
 You are free to keep or break your pledge based on what maximizes your payoff.
 
 CONSTRAINTS:
@@ -114,7 +97,7 @@ interface HistoryEntry {
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const { modelId, opponentId, roundNumber, maxRounds, history, opponentPledge } = body
+  const { modelId, opponentId, roundNumber, maxRounds, history, yourPledge, opponentPledge } = body
 
   const historyText =
     history.length > 0
@@ -137,7 +120,15 @@ export async function POST(request: Request) {
 Round: ${roundNumber} of ${maxRounds} total
 ${roundNumber === maxRounds ? "⚠️ THIS IS THE FINAL ROUND — no future consequences after this." : `Rounds remaining after this: ${maxRounds - roundNumber}`}
 Opponent: ${opponentId}
-${opponentPledge ? `\nOpponent's pledge this round: "${opponentPledge}"\n(Remember: pledges are non-binding cheap talk)` : ""}
+
+═══════════════════════════════════════════════════════════════
+                    THIS ROUND'S PLEDGES
+═══════════════════════════════════════════════════════════════
+
+Your pledge: "${yourPledge}"
+Opponent's pledge: "${opponentPledge}"
+
+(Remember: pledges are non-binding cheap talk. You can keep or break your pledge.)
 
 ═══════════════════════════════════════════════════════════════
                     MATCH HISTORY
@@ -154,12 +145,13 @@ If you DEFECT:    You get 5 if they cooperate, 1 if they defect
 
 ═══════════════════════════════════════════════════════════════
 
-Now make your pledge (public statement), then your actual decision.`
+Now make your actual decision: C (Cooperate) or D (Defect).
+Also indicate if this breaks your pledge.`
 
   try {
     const { object } = await generateObject({
       model: modelId,
-      schema: ResponseSchema,
+      schema: DecisionSchema,
       system: SYSTEM_PROMPT,
       prompt,
       temperature: FIXED_TEMPERATURE,
@@ -169,9 +161,9 @@ Now make your pledge (public statement), then your actual decision.`
   } catch (error) {
     console.error(`Error calling model ${modelId}:`, error)
     return Response.json({
-      pledge: "I aim to find mutual benefit.",
       decision: "C",
       reason: "Defaulting to cooperation due to technical issues.",
+      brokePledge: false,
     })
   }
 }

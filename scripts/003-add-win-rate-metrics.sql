@@ -28,3 +28,4 @@ GENERATED ALWAYS AS (
 DROP INDEX IF EXISTS idx_global_leaderboard_avg_points;
 CREATE INDEX IF NOT EXISTS idx_global_leaderboard_win_rate ON global_leaderboard(win_rate DESC);
 
+

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useGame } from "@/lib/game-context"
 import { TournamentStandings } from "./tournament-standings"
-import { RoundDetailViewer } from "./round-detail-viewer"
+import { RoundDetailViewer, type RoundPhase, type PendingRoundData } from "./round-detail-viewer"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +27,8 @@ export function MatchViewer() {
   const [isWaitingForNextRound, setIsWaitingForNextRound] = useState(false)
   const [isProcessingRound, setIsProcessingRound] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+  const [roundPhase, setRoundPhase] = useState<RoundPhase>("idle")
+  const [pendingRoundData, setPendingRoundData] = useState<PendingRoundData>({})
   const abortRef = useRef(false)
   const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -117,9 +119,12 @@ export function MatchViewer() {
           opponentMove: r.modelADecision,
         }))
 
-        // Call both models in parallel
-        const [resA, resB] = await Promise.all([
-          fetch("/api/play-round", {
+        // PHASE 1: Generate pledges from both models in parallel
+        setRoundPhase("generating-pledges")
+        setPendingRoundData({})
+        
+        const [pledgeResA, pledgeResB] = await Promise.all([
+          fetch("/api/generate-pledge", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -130,7 +135,7 @@ export function MatchViewer() {
               history: historyForA,
             }),
           }),
-          fetch("/api/play-round", {
+          fetch("/api/generate-pledge", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -145,42 +150,101 @@ export function MatchViewer() {
 
         if (abortRef.current) return false
 
-        // Check HTTP status
-        if (!resA.ok || !resB.ok) {
-          throw new Error(`API error: ${resA.status} / ${resB.status}`)
+        // Check HTTP status for pledges
+        if (!pledgeResA.ok || !pledgeResB.ok) {
+          throw new Error(`Pledge API error: ${pledgeResA.status} / ${pledgeResB.status}`)
         }
 
-        const [responseA, responseB] = await Promise.all([resA.json(), resB.json()])
+        const [pledgeA, pledgeB] = await Promise.all([pledgeResA.json(), pledgeResB.json()])
+
+        if (abortRef.current) return false
+
+        // Show pledges before decisions
+        setRoundPhase("showing-pledges")
+        setPendingRoundData({
+          modelAPledge: pledgeA.pledge || "No pledge provided",
+          modelBPledge: pledgeB.pledge || "No pledge provided",
+        })
+
+        // Brief pause to show pledges
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+
+        // PHASE 2: Generate decisions (each model sees opponent's pledge)
+        setRoundPhase("generating-actions")
+        
+        const [decisionResA, decisionResB] = await Promise.all([
+          fetch("/api/play-round", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              modelId: currentMatch.modelA.id,
+              opponentId: currentMatch.modelB.displayName,
+              roundNumber: currentRoundNum,
+              maxRounds: currentMatch.maxRounds,
+              history: historyForA,
+              yourPledge: pledgeA.pledge,
+              opponentPledge: pledgeB.pledge,
+            }),
+          }),
+          fetch("/api/play-round", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              modelId: currentMatch.modelB.id,
+              opponentId: currentMatch.modelA.displayName,
+              roundNumber: currentRoundNum,
+              maxRounds: currentMatch.maxRounds,
+              history: historyForB,
+              yourPledge: pledgeB.pledge,
+              opponentPledge: pledgeA.pledge,
+            }),
+          }),
+        ])
+
+        if (abortRef.current) return false
+
+        // Check HTTP status for decisions
+        if (!decisionResA.ok || !decisionResB.ok) {
+          throw new Error(`Decision API error: ${decisionResA.status} / ${decisionResB.status}`)
+        }
+
+        const [decisionA, decisionB] = await Promise.all([decisionResA.json(), decisionResB.json()])
 
         // Validate responses have required fields
-        if (!responseA.decision || !responseB.decision) {
+        if (!decisionA.decision || !decisionB.decision) {
           throw new Error("Invalid response: missing decision field")
         }
 
         // Normalize decisions to ensure they're valid
-        const decisionA = responseA.decision === "C" || responseA.decision === "D" 
-          ? responseA.decision 
+        const finalDecisionA = decisionA.decision === "C" || decisionA.decision === "D" 
+          ? decisionA.decision 
           : "C" // Default to cooperate if invalid
-        const decisionB = responseB.decision === "C" || responseB.decision === "D" 
-          ? responseB.decision 
+        const finalDecisionB = decisionB.decision === "C" || decisionB.decision === "D" 
+          ? decisionB.decision 
           : "C"
+
+        // Reset phase to idle before recording (will transition to showing-results via RoundDetailViewer)
+        setRoundPhase("idle")
+        setPendingRoundData({})
 
         // Record the round
         playRound(
-          responseA.pledge || "No pledge provided",
-          decisionA,
-          responseA.reason || "No reasoning provided",
-          responseA.brokePledge ?? false,
-          responseB.pledge || "No pledge provided",
-          decisionB,
-          responseB.reason || "No reasoning provided",
-          responseB.brokePledge ?? false,
+          pledgeA.pledge || "No pledge provided",
+          finalDecisionA,
+          decisionA.reason || "No reasoning provided",
+          decisionA.brokePledge ?? false,
+          pledgeB.pledge || "No pledge provided",
+          finalDecisionB,
+          decisionB.reason || "No reasoning provided",
+          decisionB.brokePledge ?? false,
         )
 
         setRetryCount(0) // Reset retry count on success
         return true
       } catch (error) {
         console.error(`Round attempt ${attempt} failed:`, error)
+        setRoundPhase("idle")
+        setPendingRoundData({})
         
         if (attempt < MAX_RETRIES) {
           setCurrentStatus(`Error in round ${currentRoundNum}, retrying (${attempt}/${MAX_RETRIES})...`)
@@ -392,6 +456,8 @@ export function MatchViewer() {
                 countdownMax={countdownMax}
                 isWaitingForNextRound={isWaitingForNextRound}
                 onContinue={handleContinueFromMatch}
+                roundPhase={roundPhase}
+                pendingRoundData={pendingRoundData}
               />
             )}
           </div>
