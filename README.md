@@ -29,22 +29,37 @@ In this app, AI models make **public pledges** before each round. These pledges 
 
 ## 📸 Screenshots
 
-### Home - Model Selection
-![Home Screen](public/screenshots/screenshot-home.png)
+<details>
+<summary><strong>🏠 Home - Model Selection</strong></summary>
+<br>
+<img src="public/screenshots/screenshot-home.png" alt="Home Screen" width="80%">
+</details>
 
-### Live Tournament - Phase Timeline
+<details open>
+<summary><strong>🎮 Live Tournament - Phase Timeline</strong></summary>
+<br>
 Watch as models generate pledges and make decisions in real-time with animated loading states.
+<br><br>
+<img src="public/screenshots/screenshot-live-generation.png" alt="Live Generation" width="80%">
+</details>
 
-![Live Generation](public/screenshots/screenshot-live-generation.png)
+<details>
+<summary><strong>📊 Tournament Results</strong></summary>
+<br>
+<img src="public/screenshots/screenshot-tournament-complete.png" alt="Tournament Complete" width="80%">
+</details>
 
-### Tournament Results
-![Tournament Complete](public/screenshots/screenshot-tournament-complete.png)
+<details>
+<summary><strong>🏆 Final Rankings</strong></summary>
+<br>
+<img src="public/screenshots/screenshot-final-rankings.png" alt="Final Rankings" width="80%">
+</details>
 
-### Final Rankings
-![Final Rankings](public/screenshots/screenshot-final-rankings.png)
-
-### Global Leaderboard
-![Global Leaderboard](public/screenshots/screenshot-leaderboard.png)
+<details>
+<summary><strong>📈 Global Leaderboard</strong></summary>
+<br>
+<img src="public/screenshots/screenshot-leaderboard.png" alt="Global Leaderboard" width="80%">
+</details>
 
 ## 🚀 Features
 
