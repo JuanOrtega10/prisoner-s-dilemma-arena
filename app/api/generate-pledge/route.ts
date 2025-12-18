@@ -114,5 +114,3 @@ Now make your PUBLIC PLEDGE for this round. Your opponent will see this before d
     })
   }
 }
-
-
